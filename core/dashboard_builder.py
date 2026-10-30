@@ -45,8 +45,78 @@ def build_chart(metric_key: str, df, title: str, chart_type: str):
         fig.update_traces(texttemplate="%{text} days", textposition="outside")
         return _base_layout(fig, title)
 
+    if metric_key == "payment_accuracy_by_payer":
+        fig = px.bar(df.sort_values("payment_accuracy_pct", ascending=False),
+                     x="payer_name", y="payment_accuracy_pct", text="payment_accuracy_pct")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
+    if metric_key == "payment_accuracy_by_claim_type":
+        fig = px.bar(df.sort_values("payment_accuracy_pct", ascending=False),
+                     x="claim_type", y="payment_accuracy_pct", text="payment_accuracy_pct")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
+    if metric_key == "denial_reason_dollar_impact":
+        fig = px.bar(df.sort_values("total_billed_denied", ascending=False),
+                     x="denial_reason", y="total_billed_denied", text="total_billed_denied")
+        fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
+    if metric_key == "denial_rate_by_provider" and chart_type == "bar":
+        fig = px.bar(df.sort_values("denial_rate_pct", ascending=False),
+                     x="provider_name", y="denial_rate_pct", text="denial_rate_pct")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
+    if metric_key == "provider_vs_peer_denial":
+        plot_df = df.melt(
+            id_vars=["provider_name", "specialty", "region", "total_claims"],
+            value_vars=["provider_denial_rate_pct", "specialty_avg_denial_pct"],
+            var_name="series", value_name="denial_rate_pct",
+        )
+        plot_df["series"] = plot_df["series"].map({
+            "provider_denial_rate_pct": "Provider",
+            "specialty_avg_denial_pct": "Specialty Peer Avg",
+        })
+        fig = px.bar(plot_df, x="provider_name", y="denial_rate_pct", color="series", barmode="group")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title, has_legend=True)
+
+    if metric_key == "tat_by_region":
+        fig = px.bar(df.sort_values("avg_tat_days", ascending=False),
+                     x="region", y="avg_tat_days", text="avg_tat_days")
+        fig.update_traces(texttemplate="%{text:.1f} days", textposition="outside")
+        return _base_layout(fig, title)
+
+    if metric_key == "tat_by_provider" and chart_type == "bar":
+        fig = px.bar(df.sort_values("avg_tat_days", ascending=False),
+                     x="provider_name", y="avg_tat_days", text="avg_tat_days")
+        fig.update_traces(texttemplate="%{text:.1f} days", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
+    if metric_key == "provider_volume" and chart_type == "bar":
+        fig = px.bar(df.sort_values("total_claims", ascending=False),
+                     x="provider_name", y="total_claims", text="total_claims")
+        fig.update_traces(texttemplate="%{text:,}", textposition="outside")
+        fig.update_xaxes(tickangle=-30)
+        return _base_layout(fig, title)
+
     if chart_type == "bar":
-        y_col = next((c for c in cols if "pct" in c or "amount" in c or "billed" in c or "days" in c), cols[-1])
+        # Fallback for unanticipated metric_keys (e.g. a live-LLM custom ask
+        # naming a key outside the known set). Prioritize a percentage
+        # column over a raw dollar-amount column, since a query that
+        # returns both should be charted on the pct, not the $ magnitude.
+        pct_col = next((c for c in cols if "pct" in c), None)
+        if pct_col:
+            y_col = pct_col
+        else:
+            y_col = next((c for c in cols if "amount" in c or "billed" in c or "paid" in c or "days" in c or "count" in c), cols[-1])
         x_col = cols[0]
         fig = px.bar(df.sort_values(y_col, ascending=False), x=x_col, y=y_col, text=y_col)
         fig.update_traces(texttemplate="%{text}", textposition="outside")
@@ -54,7 +124,7 @@ def build_chart(metric_key: str, df, title: str, chart_type: str):
         return _base_layout(fig, title)
 
     if chart_type == "line":
-        y_col = next((c for c in cols if c != cols[0]), cols[-1])
+        y_col = next((c for c in cols if "pct" in c), None) or next((c for c in cols if c != cols[0]), cols[-1])
         fig = px.line(df, x=cols[0], y=y_col, markers=True)
         return _base_layout(fig, title)
 
